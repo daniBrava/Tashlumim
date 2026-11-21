@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>תשלומים קבועים</title>
+<meta name="description" content="כל התשלומים הקבועים במקום אחד: עלות חודשית, חיובים צפויים ותזכורות.">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="קבועים">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="application-name" content="קבועים">
+<meta name="format-detection" content="telephone=no">
+<meta name="theme-color" media="(prefers-color-scheme: light)" content="#F4ECDD">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#1E1916">
+<meta name="color-scheme" content="light dark">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="48x48" href="/icons/favicon-48.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<script>
+  // Apply the saved theme before first paint (no flash).
+  try { var t = localStorage.getItem('fixedPayments:theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+</script>
+<style>{{CSS}}</style>
+</head>
+<body>
+<div id="app" class="app">
+  <header class="topbar">
+    <button id="title" class="title" type="button" data-action="to-top"></button>
+    <div id="topActions" class="top-actions"></div>
+  </header>
+  <div id="offline" class="banner banner-offline" hidden>אין חיבור לרשת · הכול נשמר במכשיר</div>
+  <div id="update" class="banner banner-update" hidden>
+    <button type="button" data-action="reload">גרסה חדשה · רענון</button>
+  </div>
+  <main id="pane" class="pane"></main>
+  <div id="sync" class="sync"></div>
+  <nav class="tabbar" aria-label="ניווט">
+    <button type="button" class="tab" data-action="tab" data-tab="overview"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5V12l6 6"/></svg><span>סקירה</span></button>
+    <button type="button" class="tab" data-action="tab" data-tab="calendar"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="5" width="17" height="15.5" rx="3"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg><span>לוח</span></button>
+    <button type="button" class="tab" data-action="tab" data-tab="settings"><svg class="tab-ico" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h10M18 7h2M4 17h2M10 17h10"/><circle cx="16" cy="7" r="2.2"/><circle cx="8" cy="17" r="2.2"/></svg><span>הגדרות</span></button>
+  </nav>
+  <section id="sub" class="sub" hidden aria-modal="true" role="dialog"></section>
+  <div id="layer" class="layer"></div>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+</div>
+<noscript>האפליקציה צריכה JavaScript.</noscript>
+<script>window.BUILD_ID = "{{BUILD}}";</script>
+<script>{{JS}}</script>
+</body>
+</html>

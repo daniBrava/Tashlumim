@@ -1,0 +1,7 @@
+{
+  // Must match the Worker's name in the Cloudflare dashboard, or the build fails.
+  "name": "snowy-queen-2bd3",
+  "compatibility_date": "2026-06-01",
+  // Static assets only: index.html + sw.js + manifest + icons, built into ./dist by `npm run build`.
+  "assets": { "directory": "./dist" }
+}

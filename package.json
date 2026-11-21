@@ -1,0 +1,21 @@
+{
+  "name": "fixed-costs-pwa",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs",
+    "test": "tsx --test tests/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "e2e": "node build.mjs && python3 tests/e2e.py",
+    "serve": "python3 -m http.server 8080 -d dist",
+    "deploy": "npm run build && wrangler deploy"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.166.0"
+  }
+}
