@@ -23,6 +23,8 @@ import {
 import { newId, pickColor } from './model';
 import * as store from './store';
 import { Reminder, dueReminders } from './reminders';
+import { readXlsx } from './xlsx';
+import { Candidate, Statement, findFixedPayments, parseStatement } from './calImport';
 
 declare global {
   interface Window { BUILD_ID: string }
@@ -46,10 +48,13 @@ const state = {
   cal: (() => { const t = parseDate(todayString()); return { y: t.y, m: t.m }; })(),
   theme: store.loadTheme(),
   editingId: null as string | null | undefined, // undefined = closed, null = new
+  importing: null as null | { cands: Candidate[]; st: Statement },
   saveOk: true,
   updateWaiting: false,
 };
 const scrollPos: Record<string, number> = {};
+/** A full-screen sub-view (editor or import review) is open. */
+const subOpen = (): boolean => state.editingId !== undefined || state.importing !== null;
 
 // ---------- formatting helpers (RTL-safe) ----------
 
@@ -160,12 +165,13 @@ function overviewHTML(): string {
       <h3>עוד אין תשלומים קבועים</h3>
       <p>שכירות, ביטוחים, מנויים… הוסף אותם וראה כמה הם עולים לך באמת כל חודש.</p>
       <span class="cta">+ הוספת תשלום ראשון</span>
-    </button>`;
+    </button>
+    <label class="btn btn-ghost" style="margin-top:12px" data-testid="empty-cal">ייבוא מאקסל של כאל${calInput()}</label>`;
   }
 
-  const counts: Record<Filter, number> = { all: payments.length, monthly: 0, quarterly: 0, yearly: 0 };
+  const counts: Record<Filter, number> = { all: payments.length, monthly: 0, bimonthly: 0, quarterly: 0, yearly: 0 };
   payments.forEach((p) => counts[p.frequency]++);
-  const filters: Filter[] = ['all', 'monthly', 'quarterly', 'yearly'];
+  const filters: Filter[] = ['all', 'monthly', 'bimonthly', 'quarterly', 'yearly'];
   const chips = filters
     .filter((f) => f === 'all' || counts[f] > 0)
     .map((f) => `<button type="button" class="chip${state.filter === f ? ' on' : ''}" data-action="filter" data-filter="${f}">${f === 'all' ? 'הכול' : FREQ_LABEL[f]} <span class="chip-sub">${n(counts[f])}</span></button>`)
@@ -303,6 +309,12 @@ function settingsHTML(): string {
   <div class="section">תזכורות</div>
   ${notificationsHTML()}
 
+  <div class="section">ייבוא</div>
+  <div class="group">
+    <p>מוצאים את הוראות הקבע והחיובים החוזרים בקובץ „פירוט עסקאות” שמייצאים מאפליקציית כאל או מהאתר, ובוחרים מה להוסיף. הקובץ נקרא רק בטלפון ולא נשלח לשום מקום.</p>
+    <label class="btn btn-teal" data-testid="settings-cal">ייבוא מאקסל של כאל${calInput()}</label>
+  </div>
+
   <div class="section">גיבוי</div>
   <div class="group">
     <p>הנתונים נשמרים רק במכשיר הזה, בלי חשבון ובלי שרת. כדאי לשמור גיבוי מדי פעם.</p>
@@ -362,7 +374,7 @@ function openEditor(id: string | null, push = true) {
 
       <span class="field-label">כל כמה זמן</span>
       <div class="segment" role="radiogroup">
-        ${(['monthly', 'quarterly', 'yearly'] as Frequency[]).map((f) => `<button type="button" role="radio" aria-checked="${f === freq}" class="${f === freq ? 'on' : ''}" data-action="freq" data-freq="${f}" data-testid="freq-${f}">${FREQ_LABEL[f]}</button>`).join('')}
+        ${(['monthly', 'bimonthly', 'quarterly', 'yearly'] as Frequency[]).map((f) => `<button type="button" role="radio" aria-checked="${f === freq}" class="${f === freq ? 'on' : ''}" data-action="freq" data-freq="${f}" data-testid="freq-${f}">${FREQ_LABEL[f]}</button>`).join('')}
       </div>
       <input type="hidden" name="frequency" value="${freq}">
 
@@ -481,8 +493,9 @@ function saveEditor() {
 }
 
 function closeEditor(fromPop = false) {
-  if (state.editingId === undefined) return;
+  if (!subOpen()) return;
   state.editingId = undefined;
+  state.importing = null;
   (document.activeElement as HTMLElement | null)?.blur?.();
   sub.classList.remove('enter');
   sub.style.transition = '';
@@ -497,7 +510,7 @@ function closeEditor(fromPop = false) {
   };
   sub.addEventListener('transitionend', done, { once: true });
   setTimeout(done, 320);
-  if (!fromPop && /^#(edit|new)/.test(location.hash)) history.back();
+  if (!fromPop && /^#(edit|new|import)/.test(location.hash)) history.back();
   pane.scrollTop = scrollPos[state.tab] ?? 0;
   if (state.updateWaiting) maybeApplyUpdate();
 }
@@ -613,10 +626,17 @@ document.addEventListener('click', (e) => {
       return enableNotifications();
     case 'test-notif':
       return testNotification();
+    case 'import-add':
+      return addImported();
+    case 'import-all': {
+      const on = el.dataset.on === '1';
+      sub.querySelectorAll<HTMLInputElement>(`#import-list input[data-kind="${el.dataset.kind}"]:not(:disabled)`).forEach((i) => (i.checked = on));
+      return updateImportCount();
+    }
     case 'export':
       return exportBackup();
     case 'reload':
-      if (state.editingId !== undefined) closeEditor(true);
+      if (subOpen()) closeEditor(true);
       history.replaceState(null, '', `#${state.tab}`);
       return location.reload();
     case 'toast-action': {
@@ -645,12 +665,14 @@ document.addEventListener('change', (e) => {
   if (t.name === 'hasRenewal') (sub.querySelector('#renewal-fields') as HTMLElement).hidden = !t.checked;
   if (t.closest('#form')) updatePreview();
   if (t.dataset.action === 'import' && t.files?.[0]) importBackup(t.files[0], t);
+  if (t.dataset.action === 'cal-file' && t.files?.[0]) importCal(t.files[0], t);
+  if (t.closest('#import-list')) updateImportCount();
 });
 
 document.addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return;
   if (layer.querySelector('.sheet')) closeSheet();
-  else if (state.editingId !== undefined) closeEditor();
+  else if (subOpen()) closeEditor();
 });
 
 pane.addEventListener('scroll', () => (scrollPos[state.tab] = pane.scrollTop), { passive: true });
@@ -660,7 +682,7 @@ function scrollTop() {
 }
 
 window.addEventListener('popstate', () => {
-  if (state.editingId !== undefined && !/^#(edit|new)/.test(location.hash)) {
+  if (subOpen() && !/^#(edit|new|import)/.test(location.hash)) {
     closeSheet();
     closeEditor(true);
   }
@@ -713,6 +735,129 @@ window.addEventListener('storage', (e) => {
   sub.addEventListener('touchend', end);
   sub.addEventListener('touchcancel', end);
 })();
+
+// ---------- import from a Cal statement ----------
+
+function calInput(): string {
+  return `<input type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" data-action="cal-file" hidden data-testid="cal-file">`;
+}
+
+async function importCal(file: File, input: HTMLInputElement) {
+  input.value = '';
+  let st: Statement;
+  try {
+    st = parseStatement(readXlsx(new Uint8Array(await file.arrayBuffer())));
+  } catch (e) {
+    const code = (e as Error).message;
+    return toast(code === 'not-xlsx' ? 'זה לא קובץ אקסל (xlsx)' : 'לא מצאתי עסקאות בקובץ. זה ייצוא „פירוט עסקאות” מכאל?');
+  }
+  const cands = findFixedPayments(st, state.payments);
+  if (!cands.length) return toast('לא נמצאו בקובץ חיובים קבועים');
+  openImport(cands, st);
+}
+
+const KIND_TITLE: Record<Candidate['kind'], [string, string]> = {
+  standing: ['הוראות קבע', ''],
+  repeat: ['חיובים חוזרים', 'לא הוראת קבע, אבל חוזרים באותו סכום ובקצב קבוע.'],
+  variable: ['סכום משתנה', 'לפי שימוש. הסכום הוא ממוצע שלושת החיובים האחרונים.'],
+  inactive: ['לא פעילים', 'הופסקו, או שחויבו רק פעם אחת בתקופת הקובץ.'],
+};
+
+function openImport(cands: Candidate[], st: Statement) {
+  scrollPos[state.tab] = pane.scrollTop;
+  if (state.editingId !== undefined) closeEditor(true);
+  editorToken++;
+  state.importing = { cands, st };
+  const kinds = (['standing', 'repeat', 'variable', 'inactive'] as Candidate['kind'][]).filter((k) => cands.some((c) => c.kind === k));
+  const section = (k: Candidate['kind']) => {
+    const list = cands.map((c, i) => ({ c, i })).filter(({ c }) => c.kind === k);
+    const free = list.filter(({ c }) => !c.existingId).length;
+    const anyOn = list.some(({ c }) => c.selected);
+    return `
+      <div class="section import-head"><span>${KIND_TITLE[k][0]} <bdi class="num">${list.length}</bdi></span>
+        ${free > 1 ? `<button type="button" class="text-btn small" data-action="import-all" data-kind="${k}" data-on="${anyOn ? '0' : '1'}">${anyOn ? 'ניקוי' : 'בחירת הכול'}</button>` : ''}</div>
+      ${KIND_TITLE[k][1] ? `<p class="help" style="margin:-4px 2px 10px">${KIND_TITLE[k][1]}</p>` : ''}
+      <div class="list">${list.map(({ c, i }) => importRow(c, i)).join('')}</div>`;
+  };
+  sub.innerHTML = `
+    <div class="sub-bar">
+      <button class="text-btn" type="button" data-action="back" data-testid="import-cancel">ביטול</button>
+      <h2>ייבוא מכאל</h2>
+      <button class="text-btn strong" type="button" data-action="import-add" data-testid="import-add-top">הוספה</button>
+    </div>
+    <div class="sub-pane" id="import-list">
+      <p class="help" style="margin:14px 2px 0" data-testid="import-summary">${n(st.txns.length)} עסקאות מ־${date(st.from, true)} עד ${date(st.to, true)}. נמצאו ${n(cands.length)} חיובים שחוזרים.</p>
+      ${kinds.map(section).join('')}
+      <div class="preview" id="import-total" data-testid="import-total"></div>
+      <button class="btn btn-primary" type="button" style="margin-top:14px" data-action="import-add" data-testid="import-add"></button>
+    </div>
+    <div class="edge" aria-hidden="true"></div>`;
+  sub.hidden = false;
+  sub.classList.remove('leave');
+  sub.style.transform = '';
+  sub.classList.add('enter');
+  sub.addEventListener('animationend', () => sub.classList.remove('enter'), { once: true });
+  history.pushState({ import: 1 }, '', '#import');
+  updateImportCount();
+}
+
+function importRow(c: Candidate, i: number): string {
+  const meta = [FREQ_LABEL[c.frequency], c.single ? 'חיוב אחד' : `${n(c.count)} חיובים`, `אחרון ${date(c.lastDate, !isThisYear(c.lastDate))}`];
+  const note = c.existingId
+    ? '<span class="tag">כבר באפליקציה</span>'
+    : c.priceChange && c.priceChange.to > c.priceChange.from
+      ? `<span class="tag warn">עלה מ־${money(c.priceChange.from, true)}</span>`
+      : c.priceChange
+        ? `<span class="tag">ירד מ־${money(c.priceChange.from, true)}</span>`
+        : '';
+  return `
+    <label class="row pick${c.existingId ? ' done' : ''}" data-testid="cand-${esc(c.name)}">
+      <input type="checkbox" class="check" data-i="${i}" data-kind="${c.kind}" ${c.selected ? 'checked' : ''} ${c.existingId ? 'disabled' : ''}>
+      <span class="row-main">
+        <span class="row-name">${esc(c.name)}</span>
+        <span class="row-meta">${meta.join(' · ')}</span>
+        ${note ? `<span class="row-tags">${note}</span>` : ''}
+      </span>
+      <span class="row-amt">${money(c.amount, true)}${c.variable ? '<span class="per">ממוצע</span>' : c.frequency !== 'monthly' ? `<span class="per">${money(c.amount / ({ monthly: 1, bimonthly: 2, quarterly: 3, yearly: 12 } as const)[c.frequency])} לחודש</span>` : ''}</span>
+    </label>`;
+}
+
+function chosenCandidates(): Candidate[] {
+  if (!state.importing) return [];
+  return [...sub.querySelectorAll<HTMLInputElement>('#import-list input.check:checked')].map((i) => state.importing!.cands[Number(i.dataset.i)]);
+}
+
+function updateImportCount() {
+  const chosen = chosenCandidates();
+  const perMonth = chosen.reduce((sum, c) => sum + c.amount / ({ monthly: 1, bimonthly: 2, quarterly: 3, yearly: 12 } as const)[c.frequency], 0);
+  const btn = sub.querySelector('[data-testid="import-add"]') as HTMLElement | null;
+  const total = sub.querySelector('#import-total') as HTMLElement | null;
+  if (!btn || !total) return;
+  btn.textContent = chosen.length ? `הוספת ${chosen.length} תשלומים` : 'לא נבחר כלום';
+  btn.toggleAttribute('disabled', !chosen.length);
+  total.innerHTML = chosen.length ? `העלות החודשית תעלה ב־${money(perMonth)}` : 'סמן את החיובים שתרצה להוסיף.';
+}
+
+function addImported() {
+  const chosen = chosenCandidates();
+  if (!chosen.length) return;
+  const before = state.payments;
+  const now = new Date().toISOString();
+  const next = [...before];
+  for (const c of chosen) {
+    next.push({
+      id: newId(), name: c.name, amount: c.amount, frequency: c.frequency, firstChargeDate: c.lastDate,
+      importKey: c.key, color: pickColor(next), createdAt: now, updatedAt: now,
+    });
+  }
+  closeEditor();
+  if (state.tab !== 'overview') {
+    state.tab = 'overview';
+    history.replaceState(null, '', '#overview');
+  }
+  commit(next, `נוספו ${chosen.length} תשלומים`, () => commit(before, 'הייבוא בוטל'));
+  pane.scrollTop = 0;
+}
 
 // ---------- backup ----------
 
@@ -844,7 +989,7 @@ async function checkVersion() {
 }
 
 function busy(): boolean {
-  return state.editingId !== undefined || !!layer.querySelector('.sheet');
+  return subOpen() || !!layer.querySelector('.sheet');
 }
 
 function maybeApplyUpdate() {
@@ -869,11 +1014,11 @@ function routeTo(hash: string) {
   const h = hash.replace(/^#/, '');
   if (h.startsWith('edit/')) {
     const id = decodeURIComponent(h.slice(5));
-    if (state.editingId !== undefined) closeEditor();
+    if (subOpen()) closeEditor();
     return openEditor(id);
   }
   if (h === 'overview' || h === 'calendar' || h === 'settings') {
-    if (state.editingId !== undefined) closeEditor();
+    if (subOpen()) closeEditor();
     state.tab = h;
     history.replaceState(null, '', `#${h}`);
     render();

@@ -1,15 +1,17 @@
 // Pure payment-schedule logic. No React, no storage — easy to test.
 
-export type Frequency = 'monthly' | 'quarterly' | 'yearly';
+export type Frequency = 'monthly' | 'bimonthly' | 'quarterly' | 'yearly';
 
 export const MONTHS_PER: Record<Frequency, number> = {
   monthly: 1,
+  bimonthly: 2,
   quarterly: 3,
   yearly: 12,
 };
 
 export const FREQ_LABEL: Record<Frequency, string> = {
   monthly: 'חודשי',
+  bimonthly: 'דו־חודשי',
   quarterly: 'רבעוני',
   yearly: 'שנתי',
 };
@@ -27,6 +29,8 @@ export interface Payment {
   firstChargeDate: string; // YYYY-MM-DD — a charge date; repeats every period after it
   renewalDate?: string; // contract end / renewal reminder (charges continue)
   priceChange?: PriceChange;
+  /** Set when the payment came from a card-statement import; used to avoid duplicates. */
+  importKey?: string;
   color: string;
   createdAt: string;
   updatedAt: string;

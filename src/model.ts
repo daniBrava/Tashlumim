@@ -24,6 +24,7 @@ export function pickColor(existing: Payment[]): string {
 
 function toFrequency(f: unknown): Frequency {
   if (f === 'quarterly') return 'quarterly';
+  if (f === 'bimonthly') return 'bimonthly';
   if (f === 'yearly' || f === 'annually' || f === 'annual') return 'yearly';
   return 'monthly';
 }
@@ -70,6 +71,7 @@ export function normalizePayment(r: any): Payment | null {
     createdAt: String(r.createdAt ?? new Date().toISOString()),
     updatedAt: String(r.updatedAt ?? new Date().toISOString()),
   };
+  if (typeof r.importKey === 'string' && r.importKey) p.importKey = r.importKey;
   if (r.renewalDate && isValidDate(String(r.renewalDate))) p.renewalDate = String(r.renewalDate);
   if (r.priceChange && isValidDate(String(r.priceChange.date)) && Number.isFinite(Number(r.priceChange.newAmount))) {
     p.priceChange = { date: String(r.priceChange.date), newAmount: Number(r.priceChange.newAmount) };

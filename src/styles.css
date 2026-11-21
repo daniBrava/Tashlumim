@@ -141,8 +141,8 @@ a { color: inherit; }
 .row:active { opacity: 0.6; }
 .dot { flex: none; width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--on-color); font-weight: 800; font-size: 17px; }
 .row-main { flex: 1; min-width: 0; }
-.row-name { font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.row-meta { font-size: 13px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-name { display: block; font-size: 16px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-meta { display: block; font-size: 13px; color: var(--muted); margin-top: 1px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-amt { text-align: end; flex: none; white-space: nowrap; }
 .row-amt > .num { font-size: 16px; font-weight: 700; display: block; }
 .row-amt .per { font-size: 12px; color: var(--muted); display: block; margin-top: 1px; white-space: nowrap; }
@@ -260,7 +260,7 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: right; }
   position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 60;
   transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: opacity .2s, transform .2s;
   background: var(--ink); color: var(--bg); border-radius: 14px; min-height: 44px; padding: 0 8px 0 16px;
-  display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 600; max-width: min(420px, calc(100vw - 32px));
+  display: flex; align-items: center; gap: 12px; font-size: 15px; font-weight: 600; width: max-content; max-width: min(420px, calc(100vw - 32px));
   box-shadow: var(--shadow);
 }
 .toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
@@ -268,3 +268,21 @@ input[type="date"].input::-webkit-date-and-time-value { text-align: right; }
 .toast:not(:has(button)) { padding: 0 16px; }
 
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+/* ---------- import review ---------- */
+.import-head { display: flex; align-items: center; justify-content: space-between; }
+.text-btn.small { min-height: 40px; min-width: 0; font-size: 14px; color: var(--teal-text); font-weight: 700; padding: 0 4px; }
+.pick { cursor: pointer; }
+.pick.done { opacity: 0.55; }
+.check {
+  -webkit-appearance: none; appearance: none; flex: none; width: 26px; height: 26px; margin: 0; border-radius: 50%;
+  border: 2px solid var(--faint); background: var(--surface); display: grid; place-content: center; cursor: pointer;
+}
+.check::after { content: ""; width: 11px; height: 6px; border: solid var(--teal-ink); border-width: 0 0 2.5px 2.5px; transform: rotate(-45deg) translate(1px, -1px); opacity: 0; }
+.check:checked { background: var(--teal); border-color: var(--teal); }
+.check:checked::after { opacity: 1; }
+.check:disabled { border-style: dashed; }
+.row-tags { display: block; margin-top: 4px; }
+.tag { display: inline-block; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 8px; background: var(--surface-2); color: var(--muted); }
+.tag.warn { background: var(--orange-soft); color: var(--orange); }
+.btn[disabled] { opacity: 0.45; }
